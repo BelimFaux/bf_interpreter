@@ -1,0 +1,11 @@
+[package]
+name = "bf-interpreter"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bf_interpreter"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
