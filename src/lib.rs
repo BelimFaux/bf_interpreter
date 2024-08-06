@@ -64,6 +64,7 @@ impl Machine {
                 '.' => self.put(),
                 ',' => self.get(),
                 '[' => {
+                    // run rest of program as long as cell isn't 0
                     while self.cells[self.ptr] != 0 {
                         self.run(&program[index+1..]);
                     }
@@ -71,6 +72,7 @@ impl Machine {
                     let skip = find_close(&program[index..]) - 1;
                     it.nth(skip);
                 },
+                // end recursion of opening bracket
                 ']' => return,
                 _ => continue,
             }
