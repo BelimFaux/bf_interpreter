@@ -1,12 +1,39 @@
 use clap::Parser;
-use std::{io::Read, fmt::Display, process};
+use std::{io::Read, fmt::Display, process, fs};
 
 #[derive(Parser)]
 #[command(version)]
 pub struct Config {
-    pub program: String,
+    /// File OR programcode [default: File]
+    program: String,
+
+    /// Length of band
     #[arg(default_value_t = 10, short = 's', long = "size")]
     pub cell_sz: usize,
+
+    /// Type of input. If set, instead of a file the programcode is expected
+    #[arg(short = 'i', long = "input", action)]
+    inp_type: bool,
+}
+
+impl Config {
+    /// return the correct bf program as a string slice
+    /// if inp_type isnt set, the file will be read and placed into the program field
+    pub fn get_program(&mut self) -> &str {
+        if self.inp_type {
+            &self.program
+        } else {
+            let contents = fs::read_to_string(self.program.clone());
+            if let Ok(contents) = contents {
+                self.program = contents;
+                self.inp_type = false;
+                &self.program
+            } else {
+                eprintln!("Error: File couldn't be read: {}", contents.unwrap_err());
+                process::exit(1);
+            }
+        }
+    }
 }
 
 /// Machine struct, to emulate a kind of Turingmachine, that can be operated via Brainfuck code
@@ -130,7 +157,7 @@ mod test {
     use super::*;
 
     fn setup_machine(cell_sz: usize) -> Machine {
-        let cnfg = Config { program: "".to_owned(), cell_sz };
+        let cnfg = Config { program: "".to_owned(), cell_sz, inp_type: false };
         Machine::new(&cnfg)
     }
 
