@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::io::Read;
+use std::{io::Read, fmt::Display, process};
 
 #[derive(Parser)]
 #[command(version)]
@@ -9,19 +9,23 @@ pub struct Config {
     pub cell_sz: usize,
 }
 
-#[derive(Debug)]
+/// Machine struct, to emulate a kind of Turingmachine, that can be operated via Brainfuck code
 pub struct Machine {
     cells: Vec<u8>,
     ptr: usize,
 }
 
 impl Machine {
+    /// Create a new Machine from a Config struct
+    /// The machine will contain a vec of cells with value 0, and a ptr starting at cell 0
     pub fn new(cnfg: &Config) -> Machine {
         let cells = vec![0; cnfg.cell_sz];
         let ptr = 0;
         Machine { cells, ptr }
     }
 
+    /// run a bf program on the Machine
+    /// input the program as a string slice, all invalid characters will be ignored as comments
     pub fn run(&mut self, program: &str) {
         let mut it = program.chars().enumerate();
         while let Some((index, char)) = it.next() {
@@ -36,6 +40,7 @@ impl Machine {
                     while self.cells[self.ptr] != 0 {
                         self.run(&program[index+1..]);
                     }
+                    // skip to closing bracket
                     let skip = find_close(&program[index..]) - 1;
                     it.nth(skip);
                 },
@@ -46,17 +51,21 @@ impl Machine {
     }
 
     fn mv_left(&mut self) {
+        // pointer can't move further than the cell size, so exit program
         if self.ptr > self.cells.len() - 1 {
-            panic!("Stack Overflow! Try running again with a bigger cell size");
+            eprintln!("Error: Stack Overflow. Pointer can't move beyond {}. Try running again with a bigger cell size", self.cells.len());
+            process::exit(1);
         }
         self.ptr += 1;
     }
 
     fn mv_right(&mut self) {
-       if self.ptr < 1 {
-           panic!("Stack Underflow!")
-       }
-       self.ptr -= 1;
+        // pointer can't move below 0, so exit program
+        if self.ptr < 1 {
+           eprintln!("Error: Stack Underflow. Pointer can't move below 0");
+           process::exit(1);
+        }
+        self.ptr -= 1;
     }
 
     fn inc(&mut self) {
@@ -78,8 +87,23 @@ impl Machine {
             .next()
             .and_then(|result| result.ok())
             .map(|byte| byte as u8)
-            .unwrap();
+            .unwrap_or(0);
+
         self.cells[self.ptr] = input;
+    }
+}
+
+impl Display for Machine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut cells = String::new();
+        for (index, cell) in self.cells.iter().enumerate() {
+            if index == self.ptr {
+                cells.push_str(&format!(">[{cell}]<"));
+            } else {
+                cells.push_str(&format!("[{cell}]"));
+            }
+        }
+        write!(f, "{}", cells)
     }
 }
 
@@ -97,5 +121,71 @@ fn find_close(program: &str) -> usize {
             _ => continue,
         }
     }
-    panic!("no corresponding bracket found.");
+    eprintln!("no corresponding bracket found.");
+    process::exit(1)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn setup_machine(cell_sz: usize) -> Machine {
+        let cnfg = Config { program: "".to_owned(), cell_sz };
+        Machine::new(&cnfg)
+    }
+
+    #[test]
+    fn closing_bracket() {
+        let program = "[+++-<]";
+        assert_eq!(find_close(program), 6);
+    }
+
+    #[test]
+    fn nested_closing_bracket() {
+        let program = "[+[]+[]+-<]";
+        assert_eq!(find_close(program), 10);
+
+        let program = "[+[[]+++]++-<]";
+        assert_eq!(find_close(program), 13);
+    }
+
+    #[test]
+    fn incr_curr_cell() {
+        let mut machine = setup_machine(1);
+        machine.run("+++");
+        assert_eq!(format!("{machine}"), ">[3]<");
+
+        // wrapping
+        let mut machine = setup_machine(1);
+        for _ in 0..256 {
+            machine.run("+");
+        }
+        assert_eq!(format!("{machine}"), ">[0]<");
+    }
+
+    #[test]
+    fn decr_curr_cell() {
+        let mut machine = setup_machine(1);
+        machine.run("+++---");
+        assert_eq!(format!("{machine}"), ">[0]<");
+
+        // wrapping
+        machine.run("-");
+        assert_eq!(format!("{machine}"), ">[255]<");
+    }
+
+    #[test]
+    fn loop_incr() {
+        let mut machine = setup_machine(2);
+        machine.run("++[>++<-]");
+        assert_eq!(format!("{machine}"), ">[0]<[4]");
+    }
+
+    #[test]
+    fn loop_nested() {
+        let mut machine = setup_machine(3);
+        machine.run("++[>++[>++<-]<-]");
+        assert_eq!(format!("{machine}"), ">[0]<[0][8]");
+    }
+
 }

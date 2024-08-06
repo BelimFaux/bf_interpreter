@@ -8,5 +8,5 @@ fn main() {
 
     machine.run(&cnfg.program);
 
-    println!("\n{:?}", machine);
+    println!("\nFinal State: {}", machine);
 }
