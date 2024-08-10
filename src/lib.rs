@@ -1,6 +1,6 @@
 use clap::Parser;
 use core::ops::Deref;
-use std::{io::Read, fmt::Display, process, fs};
+use std::{io::{self, Read}, fmt::Display, process, fs};
 
 #[derive(Parser)]
 #[command(version)]
@@ -20,19 +20,14 @@ pub struct Config {
 impl Config {
     /// return the correct bf program as a string slice
     /// if inp_type isnt set, the file will be read and placed into the program field
-    pub fn get_program(&mut self) -> &str {
+    pub fn get_program(&mut self) -> Result<&str, io::Error> {
         if self.inp_type {
-            &self.program
+            Ok(&self.program)
         } else {
-            let contents = fs::read_to_string(self.program.clone());
-            if let Ok(contents) = contents {
-                self.program = contents;
-                self.inp_type = false;
-                &self.program
-            } else {
-                eprintln!("Error: File couldn't be read: {}", contents.unwrap_err());
-                process::exit(1);
-            }
+            let contents = fs::read_to_string(self.program.clone())?;
+            self.program = contents;
+            self.inp_type = false;
+            Ok(&self.program)
         }
     }
 }
@@ -50,9 +45,32 @@ pub enum Token {
 
 #[derive(Debug)]
 pub enum ParseError {
-    NegativeMv(usize),
-    NoCloseBracket(usize),
-    NoOpenBracket(usize),
+    NoCloseBracket(usize, usize),
+    NoOpenBracket(usize, usize),
+}
+
+impl ParseError {
+    pub fn get_msg(self, program: &str) -> String {
+        let (mut e_str, idx, ln) = match self {
+            ParseError::NoCloseBracket(idx, ln) => (format!("Missing closing bracket for '[' at {ln};{idx}:\n{ln} "), idx, ln),
+            ParseError::NoOpenBracket(idx, ln) => (format!("Missing opening bracket for ']' at {ln};{idx}:\n{ln} "), idx, ln),
+        };
+        let line = program.lines().nth(ln-1).expect("there should always be atleast ln-1 lines");
+        let from = if idx > 5 { idx - 5 } else { 0 };
+        let to = if idx < line.len().checked_sub(5).unwrap_or(0) { idx + 6 } else { line.len() };
+        if from != 0 {
+            e_str.push_str("...");
+        }
+        e_str.push_str(&line[from..to]);
+        if to != line.len() {
+            e_str.push_str("...");
+        }
+        let arrow = if from == 0 { idx } else { 8 };
+        e_str.push_str("\n  ");
+        e_str.push_str(&" ".repeat(arrow));
+        e_str.push('^');
+        e_str
+    }
 }
 
 /// Wrapper for a Token vector to avoid manipulation
@@ -73,45 +91,43 @@ impl Program {
     /// if there are any errors in the program e.g. non matching bracket a ParseError is returned
     pub fn tokenize(program: &str) -> Result<Program, ParseError> {
         let mut tokens = Vec::new();
-        let mut moves = 0;
         let mut brackets = 0;
+        let mut lines = 1;
+        let mut chars = 0;
         for (index, instr) in program.chars().enumerate() {
             match instr {
-                '>' => {
-                    tokens.push(Token::MvRight);
-                    moves += 1;
-                }
-                '<' => {
-                    tokens.push(Token::MvLeft);
-                    moves -= 1;
-                    if moves < 0 {
-                        return Err(ParseError::NegativeMv(index))
-                    }
-                }
+                '>' => tokens.push(Token::MvRight),
+                '<' => tokens.push(Token::MvLeft),
                 '+' => tokens.push(Token::Inc),
                 '-' => tokens.push(Token::Dec),
                 '.' => tokens.push(Token::PutChar),
                 ',' => tokens.push(Token::GetChar),
                 '[' => {
                     brackets += 1;
-                    let end_idx = count_tokens_cbrack(&program[index..], index)?;
+                    let end_idx = count_tokens_cbrack(&program[index..], chars, lines)?;
                     tokens.push(Token::Loop(end_idx));
                 },
                 ']' => {
                     brackets -= 1;
                     if brackets < 0 {
-                        return Err(ParseError::NoOpenBracket(index))
+                        return Err(ParseError::NoOpenBracket(chars, lines))
                     }
                 },
-                _ => continue,
-            }
+                '\n' => {
+                    lines += 1;
+                    chars = 0;
+                    continue
+                },
+                _ => {},
+           }
+           chars += 1;
         }
         Ok(Program { tokens })
     }
 }
 
 /// count the number of Tokens (< > + - . , [) up to the matching close bracket
-fn count_tokens_cbrack(program: &str, index: usize) -> Result<usize, ParseError> {
+fn count_tokens_cbrack(program: &str, index: usize, lines: usize) -> Result<usize, ParseError> {
     let mut stack = 0;
     let mut counter = 0usize;
     for instr in program.chars() {
@@ -131,7 +147,7 @@ fn count_tokens_cbrack(program: &str, index: usize) -> Result<usize, ParseError>
             _ => continue,
         }
     }
-    Err(ParseError::NoCloseBracket(index))
+    Err(ParseError::NoCloseBracket(index, lines))
 }
 
 /// Machine struct, to emulate a kind of Turingmachine, that can be operated via Brainfuck code
