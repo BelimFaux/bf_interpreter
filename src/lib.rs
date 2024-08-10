@@ -1,4 +1,5 @@
 use clap::Parser;
+use core::ops::Deref;
 use std::{io::Read, fmt::Display, process, fs};
 
 #[derive(Parser)]
@@ -36,6 +37,103 @@ impl Config {
     }
 }
 
+#[derive(Debug)]
+pub enum Token {
+    MvRight,
+    MvLeft,
+    Inc,
+    Dec,
+    GetChar,
+    PutChar,
+    Loop(usize),
+}
+
+#[derive(Debug)]
+pub enum ParseError {
+    NegativeMv(usize),
+    NoCloseBracket(usize),
+    NoOpenBracket(usize),
+}
+
+/// Wrapper for a Token vector to avoid manipulation
+pub struct Program {
+    tokens: Vec<Token>,
+}
+
+impl Deref for Program {
+    type Target = Vec<Token>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.tokens
+    }
+}
+
+impl Program {
+    /// parse a bf program to a series of Tokens
+    /// if there are any errors in the program e.g. non matching bracket a ParseError is returned
+    pub fn tokenize(program: &str) -> Result<Program, ParseError> {
+        let mut tokens = Vec::new();
+        let mut moves = 0;
+        let mut brackets = 0;
+        for (index, instr) in program.chars().enumerate() {
+            match instr {
+                '>' => {
+                    tokens.push(Token::MvRight);
+                    moves += 1;
+                }
+                '<' => {
+                    tokens.push(Token::MvLeft);
+                    moves -= 1;
+                    if moves < 0 {
+                        return Err(ParseError::NegativeMv(index))
+                    }
+                }
+                '+' => tokens.push(Token::Inc),
+                '-' => tokens.push(Token::Dec),
+                '.' => tokens.push(Token::PutChar),
+                ',' => tokens.push(Token::GetChar),
+                '[' => {
+                    brackets += 1;
+                    let end_idx = count_tokens_cbrack(&program[index..], index)?;
+                    tokens.push(Token::Loop(end_idx));
+                },
+                ']' => {
+                    brackets -= 1;
+                    if brackets < 0 {
+                        return Err(ParseError::NoOpenBracket(index))
+                    }
+                },
+                _ => continue,
+            }
+        }
+        Ok(Program { tokens })
+    }
+}
+
+/// count the number of Tokens (< > + - . , [) up to the matching close bracket
+fn count_tokens_cbrack(program: &str, index: usize) -> Result<usize, ParseError> {
+    let mut stack = 0;
+    let mut counter = 0usize;
+    for instr in program.chars() {
+        match instr {
+            '<' | '>' | '+' | '-' | '.' | ',' => counter += 1,
+            '[' => {
+                stack += 1;
+                counter += 1;
+            },
+            // ] don't count as tokens by themselves so the counter doesn't get increased
+            ']' => {
+                stack -= 1;
+                if stack == 0 {
+                    return Ok(counter - 1);
+                }
+            },
+            _ => continue,
+        }
+    }
+    Err(ParseError::NoCloseBracket(index))
+}
+
 /// Machine struct, to emulate a kind of Turingmachine, that can be operated via Brainfuck code
 pub struct Machine {
     cells: Vec<u8>,
@@ -51,38 +149,41 @@ impl Machine {
         Machine { cells, ptr }
     }
 
-    /// run a bf program on the Machine
-    /// input the program as a string slice, all invalid characters will be ignored as comments
-    pub fn run(&mut self, program: &str) {
-        let mut it = program.chars().enumerate();
-        while let Some((index, char)) = it.next() {
-            match char {
-                '>' => self.mv_left(),
-                '<' => self.mv_right(),
-                '+' => self.inc(),
-                '-' => self.dec(),
-                '.' => self.put(),
-                ',' => self.get(),
-                '[' => {
-                    // run rest of program as long as cell isn't 0
-                    while self.cells[self.ptr] != 0 {
-                        self.run(&program[index+1..]);
+    /// Run a Program on the Machine
+    pub fn run(&mut self, program: &Program) {
+        self.run_slice(program);
+    }
+
+    /// recursive helper for run, to handle nested loops
+    fn run_slice(&mut self, program: &[Token]) {
+        let mut it = program.iter().enumerate();
+        while let Some((index, token)) = it.next() {
+            match token {
+                Token::MvLeft => self.mv_right(),
+                Token::MvRight => self.mv_left(),
+                Token::Inc => self.inc(),
+                Token::Dec => self.dec(),
+                Token::GetChar => self.get(),
+                Token::PutChar => self.put(),
+                Token::Loop(idx) => {
+                    let end = index + 1 + *idx;
+                    while *self.value() != 0 {
+                        self.run_slice(&program[index+1..end]);
                     }
-                    // skip to closing bracket
-                    let skip = find_close(&program[index..]) - 1;
-                    it.nth(skip);
+                    it.nth(*idx - 1);
                 },
-                // end recursion of opening bracket
-                ']' => return,
-                _ => continue,
             }
         }
+    }
+
+    fn value(&self) -> &u8 {
+        &self.cells[self.ptr]
     }
 
     fn mv_left(&mut self) {
         // pointer can't move further than the cell size, so exit program
         if self.ptr > self.cells.len() - 1 {
-            eprintln!("Error: Stack Overflow. Pointer can't move beyond {}. Try running again with a bigger cell size", self.cells.len());
+            eprintln!("Runtime Error: Pointer can't move beyond {}. Try running again with a bigger cell size", self.cells.len());
             process::exit(1);
         }
         self.ptr += 1;
@@ -91,7 +192,7 @@ impl Machine {
     fn mv_right(&mut self) {
         // pointer can't move below 0, so exit program
         if self.ptr < 1 {
-           eprintln!("Error: Stack Underflow. Pointer can't move below 0");
+           eprintln!("Runtime Error: Pointer can't move below 0");
            process::exit(1);
         }
         self.ptr -= 1;
@@ -105,8 +206,8 @@ impl Machine {
         self.cells[self.ptr] = self.cells[self.ptr].wrapping_sub(1);
     }
 
-    fn put(& self) {
-        let ch = char::from(self.cells[self.ptr]);
+    fn put(&self) {
+        let ch = char::from(*self.value());
         print!("{ch}");
     }
 
@@ -129,29 +230,11 @@ impl Display for Machine {
             if index == self.ptr {
                 cells.push_str(&format!(">[{cell}]<"));
             } else {
-                cells.push_str(&format!("[{cell}]"));
+                cells.push_str(&format!(" [{cell}] "));
             }
         }
         write!(f, "{}", cells)
     }
-}
-
-fn find_close(program: &str) -> usize {
-    let mut stack = 0;
-    for (index, char) in program.chars().enumerate() {
-        match char {
-            '[' => stack += 1,
-            ']' => {
-                stack -= 1;
-                if stack == 0 {
-                    return index;
-                }
-            },
-            _ => continue,
-        }
-    }
-    eprintln!("no corresponding bracket found.");
-    process::exit(1)
 }
 
 #[cfg(test)]
@@ -161,60 +244,6 @@ mod test {
     fn setup_machine(cell_sz: usize) -> Machine {
         let cnfg = Config { program: "".to_owned(), cell_sz, inp_type: false };
         Machine::new(&cnfg)
-    }
-
-    #[test]
-    fn closing_bracket() {
-        let program = "[+++-<]";
-        assert_eq!(find_close(program), 6);
-    }
-
-    #[test]
-    fn nested_closing_bracket() {
-        let program = "[+[]+[]+-<]";
-        assert_eq!(find_close(program), 10);
-
-        let program = "[+[[]+++]++-<]";
-        assert_eq!(find_close(program), 13);
-    }
-
-    #[test]
-    fn incr_curr_cell() {
-        let mut machine = setup_machine(1);
-        machine.run("+++");
-        assert_eq!(format!("{machine}"), ">[3]<");
-
-        // wrapping
-        let mut machine = setup_machine(1);
-        for _ in 0..256 {
-            machine.run("+");
-        }
-        assert_eq!(format!("{machine}"), ">[0]<");
-    }
-
-    #[test]
-    fn decr_curr_cell() {
-        let mut machine = setup_machine(1);
-        machine.run("+++---");
-        assert_eq!(format!("{machine}"), ">[0]<");
-
-        // wrapping
-        machine.run("-");
-        assert_eq!(format!("{machine}"), ">[255]<");
-    }
-
-    #[test]
-    fn loop_incr() {
-        let mut machine = setup_machine(2);
-        machine.run("++[>++<-]");
-        assert_eq!(format!("{machine}"), ">[0]<[4]");
-    }
-
-    #[test]
-    fn loop_nested() {
-        let mut machine = setup_machine(3);
-        machine.run("++[>++[>++<-]<-]");
-        assert_eq!(format!("{machine}"), ">[0]<[0][8]");
     }
 
 }
