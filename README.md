@@ -3,7 +3,7 @@ simple Brainfuck interpreter written in Rust, to learn more about the language, 
 
 ## Brainfuck
 Brainfuck is an esoteric programming language created in 1993 [...]. Designed to be extremely minimalistic, the language consists of only eight simple commands [...].  
-![https://en.wikipedia.org/wiki/Brainfuck](see Wikipedia)
+![see Wikipedia](https://en.wikipedia.org/wiki/Brainfuck)
 
 ## Usage
 The Program can be compiled with cargo:
