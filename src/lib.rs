@@ -8,13 +8,16 @@ pub struct Config {
     /// File OR programcode [default: File]
     program: String,
 
-    /// Length of band
-    #[arg(default_value_t = 10, short = 's', long = "size")]
+    /// Amount of cells available
+    #[arg(default_value_t = 10, short = 'c', long = "cells")]
     pub cell_sz: usize,
 
     /// Type of input. If set, instead of a file the programcode is expected
     #[arg(short = 'i', long = "input", action)]
     inp_type: bool,
+    /// Show final state after successfully running the programm
+    #[arg(short = 's', long = "state", action)]
+    pub state: bool,
 }
 
 impl Config {

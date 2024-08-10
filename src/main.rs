@@ -24,5 +24,7 @@ fn main() {
     let mut machine = Machine::new(&cnfg);
     machine.run(&program);
 
-    println!("\nFinal State: {}", machine);
+    if cnfg.state {
+        println!("\nFinal State: {}", machine);
+    }
 }
