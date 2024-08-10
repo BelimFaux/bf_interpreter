@@ -55,8 +55,8 @@ pub enum ParseError {
 impl ParseError {
     pub fn get_msg(self, program: &str) -> String {
         let (mut e_str, idx, ln) = match self {
-            ParseError::NoCloseBracket(idx, ln) => (format!("Missing closing bracket for '[' at {ln};{idx}:\n{ln} "), idx, ln),
-            ParseError::NoOpenBracket(idx, ln) => (format!("Missing opening bracket for ']' at {ln};{idx}:\n{ln} "), idx, ln),
+            ParseError::NoCloseBracket(idx, ln) => (format!("Missing closing bracket for '[' at {ln}:{idx}:\n{ln} "), idx, ln),
+            ParseError::NoOpenBracket(idx, ln) => (format!("Missing opening bracket for ']' at {ln}:{idx}:\n{ln} "), idx, ln),
         };
         let line = program.lines().nth(ln-1).expect("there should always be atleast ln-1 lines");
         let from = if idx > 5 { idx - 5 } else { 0 };
@@ -68,9 +68,10 @@ impl ParseError {
         if to != line.len() {
             e_str.push_str("...");
         }
+        let ln_len = ln.to_string().len();
         let arrow = if from == 0 { idx } else { 8 };
-        e_str.push_str("\n  ");
-        e_str.push_str(&" ".repeat(arrow));
+        e_str.push_str("\n ");
+        e_str.push_str(&" ".repeat(arrow + ln_len));
         e_str.push('^');
         e_str
     }
