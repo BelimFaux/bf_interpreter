@@ -8,12 +8,13 @@ Brainfuck is an esoteric programming language created in 1993 [...]. Designed to
 ## Usage
 The Program can be compiled with cargo:
 ```bash
-cargo build --release
-./target/release/bf-interpreter <FILE>
+https://github.com/BelimFaux/bf_interpreter.git
+cd bf_interpreter
+cargo run --release examples/hello_world.bf
 ```
 It takes atleast one parameter for the Input-file or optionally the bf-code.
 It's also possible to set the size of the cell band, which is by default set to 10.
 
 For all options run `./target/release/bf-interpreter -h`.
 
-All examples are taken from the Wikipedia page of Brainfuck (see link above)
+Examples are taken from the Wikipedia page of Brainfuck (see link above)
