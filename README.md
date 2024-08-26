@@ -8,7 +8,7 @@ Brainfuck is an esoteric programming language created in 1993 [...]. Designed to
 ## Usage
 The Program can be compiled with cargo:
 ```bash
-https://github.com/BelimFaux/bf_interpreter.git
+git clone https://github.com/BelimFaux/bf_interpreter.git
 cd bf_interpreter
 cargo run --release examples/hello_world.bf
 ```
