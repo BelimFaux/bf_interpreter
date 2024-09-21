@@ -123,8 +123,8 @@ impl Program {
                     continue
                 },
                 _ => {},
-           }
-           chars += 1;
+            }
+            chars += 1;
         }
         Ok(Program { tokens })
     }
@@ -212,8 +212,8 @@ impl Machine {
     fn mv_right(&mut self) {
         // pointer can't move below 0, so exit program
         if self.ptr < 1 {
-           eprintln!("Runtime Error: Pointer can't move below 0");
-           process::exit(1);
+            eprintln!("Runtime Error: Pointer can't move below 0");
+            process::exit(1);
         }
         self.ptr -= 1;
     }
@@ -262,7 +262,7 @@ mod test {
     use super::*;
 
     fn setup_machine(cell_sz: usize) -> Machine {
-        let cnfg = Config { program: "".to_owned(), cell_sz, inp_type: false };
+        let cnfg = Config { program: "".to_owned(), cell_sz, inp_type: false, state: true };
         Machine::new(&cnfg)
     }
 
