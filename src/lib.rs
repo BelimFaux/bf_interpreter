@@ -60,7 +60,7 @@ impl ParseError {
         };
         let line = program.lines().nth(ln-1).expect("there should always be atleast ln-1 lines");
         let from = if idx > 5 { idx - 5 } else { 0 };
-        let to = if idx < line.len().checked_sub(5).unwrap_or(0) { idx + 6 } else { line.len() };
+        let to = if idx < line.len().saturating_sub(5) { idx + 6 } else { line.len() };
         if from != 0 {
             e_str.push_str("...");
         }
@@ -236,7 +236,7 @@ impl Machine {
             .bytes()
             .next()
             .and_then(|result| result.ok())
-            .map(|byte| byte as u8)
+            .map(|byte| byte)
             .unwrap_or(0);
 
         self.cells[self.ptr] = input;
