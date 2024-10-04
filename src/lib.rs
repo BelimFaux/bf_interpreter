@@ -1,6 +1,6 @@
 use clap::Parser;
 use core::ops::Deref;
-use std::{io::{self, Read}, fmt::Display, process, fs};
+use std::{io::{self, Read}, fmt::Display, fs};
 
 #[derive(Parser)]
 #[command(version)]
@@ -9,15 +9,12 @@ pub struct Config {
     program: String,
 
     /// Amount of cells available
-    #[arg(default_value_t = 10, short = 'c', long = "cells")]
+    #[arg(default_value_t = 100, short = 'c', long = "cells")]
     pub cell_sz: usize,
 
     /// Type of input. If set, instead of a file the programcode is expected
     #[arg(short = 'i', long = "input", action)]
     inp_type: bool,
-    /// Show final state after successfully running the programm
-    #[arg(short = 's', long = "state", action)]
-    pub state: bool,
 }
 
 impl Config {
@@ -36,122 +33,173 @@ impl Config {
 }
 
 #[derive(Debug)]
-pub enum Token {
-    MvRight,
-    MvLeft,
-    Inc,
-    Dec,
-    GetChar,
-    PutChar,
-    Loop(usize),
+enum Token {
+    RBrac { line: u32, col: u32 },  // Brackets store position information, because they are the only Tokens, that can produce ParseErrors
+    LBrac { line: u32, col: u32 },
+    Plus,
+    Minus,
+    Less,
+    Greater,
+    Dot,
+    Comma,
+    EOF,
 }
 
-#[derive(Debug)]
-pub enum ParseError {
-    NoCloseBracket(usize, usize),
-    NoOpenBracket(usize, usize),
+#[derive(Debug, PartialEq)]
+pub enum Instruction {
+    MvLeft(usize),
+    MvRight(usize),
+    Inc(usize),
+    Dec(usize),
+    Jmp(usize),
+    JmpZ(usize),
+    Get,
+    Put,
+    Exit,
+}
+
+pub struct ParseError {
+    errors: Vec<Token>,
 }
 
 impl ParseError {
-    pub fn get_msg(self, program: &str) -> String {
-        let (mut e_str, idx, ln) = match self {
-            ParseError::NoCloseBracket(idx, ln) => (format!("Missing closing bracket for '[' at {ln}:{idx}:\n{ln} "), idx, ln),
-            ParseError::NoOpenBracket(idx, ln) => (format!("Missing opening bracket for ']' at {ln}:{idx}:\n{ln} "), idx, ln),
-        };
-        let line = program.lines().nth(ln-1).expect("there should always be atleast ln-1 lines");
-        let from = if idx > 5 { idx - 5 } else { 0 };
-        let to = if idx < line.len().saturating_sub(5) { idx + 6 } else { line.len() };
-        if from != 0 {
-            e_str.push_str("...");
+    fn new() -> Self {
+        ParseError { errors: Vec::new() }
+    }
+
+    fn report_error(&mut self, token: Token) {
+        self.errors.push(token)
+    }
+
+    fn had_error(&self) -> bool {
+        self.errors.len() != 0
+    }
+
+    pub fn get_error_msg(&self, _program: &str) -> String {
+        let mut msg = format!("{} errors occured during parsing:\n", self.errors.len());
+
+        for err in &self.errors {
+            let str = match err {
+                Token::RBrac { line, col } => format!("Unexpected closing bracket found (l.{line}:{col}).\n"),
+                Token::LBrac { line, col } => format!("Opening bracket wasn't closed (l.{line}:{col}).\n"),
+                _ => format!("Unexpected Error at {:?}\n", err),
+            };
+            msg.push_str(&str);
         }
-        e_str.push_str(&line[from..to]);
-        if to != line.len() {
-            e_str.push_str("...");
-        }
-        let ln_len = ln.to_string().len();
-        let arrow = if from == 0 { idx } else { 8 };
-        e_str.push_str("\n ");
-        e_str.push_str(&" ".repeat(arrow + ln_len));
-        e_str.push('^');
-        e_str
+
+        msg
     }
 }
 
 /// Wrapper for a Token vector to avoid manipulation
+#[derive(Debug)]
 pub struct Program {
-    tokens: Vec<Token>,
+    instructions: Vec<Instruction>,
 }
 
 impl Deref for Program {
-    type Target = Vec<Token>;
+    type Target = Vec<Instruction>;
 
     fn deref(&self) -> &Self::Target {
-        &self.tokens
+        &self.instructions
     }
 }
 
 impl Program {
     /// parse a bf program to a series of Tokens
-    /// if there are any errors in the program e.g. non matching bracket a ParseError is returned
-    pub fn tokenize(program: &str) -> Result<Program, ParseError> {
+    fn tokenize(program: &str) -> Vec<Token> {
         let mut tokens = Vec::new();
-        let mut brackets = 0;
-        let mut lines = 1;
-        let mut chars = 0;
-        for (index, instr) in program.chars().enumerate() {
-            match instr {
-                '>' => tokens.push(Token::MvRight),
-                '<' => tokens.push(Token::MvLeft),
-                '+' => tokens.push(Token::Inc),
-                '-' => tokens.push(Token::Dec),
-                '.' => tokens.push(Token::PutChar),
-                ',' => tokens.push(Token::GetChar),
-                '[' => {
-                    brackets += 1;
-                    let end_idx = count_tokens_cbrack(&program[index..], chars, lines)?;
-                    tokens.push(Token::Loop(end_idx));
+        let mut line = 1;
+        let mut col = 0;
+
+        for char in program.chars() {
+            col += 1;
+            let token = match char {
+                '+' => Token::Plus,
+                '-' => Token::Minus,
+                '<' => Token::Less,
+                '>' => Token::Greater,
+                ']' => Token::RBrac { line, col },
+                '[' => Token::LBrac { line, col },
+                '.' => Token::Dot,
+                ',' => Token::Comma,
+                '\n' => {
+                    line += 1;
+                    col = 0;
+                    continue;
                 },
-                ']' => {
-                    brackets -= 1;
-                    if brackets < 0 {
-                        return Err(ParseError::NoOpenBracket(chars, lines))
+                _ => continue,
+            };
+            tokens.push(token);
+        }
+
+        tokens.push(Token::EOF);
+        tokens
+    }
+
+    fn parse(program: Vec<Token>) -> Result<Program, ParseError> {
+        let mut instructions = Vec::new();
+        let mut jmp_addresses = Vec::new();
+        let mut errors = ParseError::new();
+
+        for token in program {
+            let instr = match token {
+                Token::Plus => Instruction::Inc(1),
+                Token::Minus => Instruction::Dec(1),
+                Token::Greater => Instruction::MvRight(1),
+                Token::Less => Instruction::MvLeft(1),
+                Token::Dot => Instruction::Put,
+                Token::Comma => Instruction::Get,
+                Token::RBrac { .. } => {
+                    if let Some((token, address)) = jmp_addresses.pop() {
+                        let jmp_addr = instructions.len() + 1;  // jump past this instr
+                        match instructions.get_mut(address).expect("jmp address should always exist") {
+                            Instruction::JmpZ(addr) => *addr = jmp_addr,
+                            _ => errors.report_error(token),
+                        }
+                        Instruction::Jmp(address)
+                    } else {    // if no address is on top of the stack, no open bracket is remaining
+                        errors.report_error(token);
+                        continue;
                     }
                 },
-                '\n' => {
-                    lines += 1;
-                    chars = 0;
-                    continue
-                },
-                _ => {},
-            }
-            chars += 1;
+                Token::LBrac { .. } => {
+                    jmp_addresses.push((token, instructions.len()));
+                    Instruction::JmpZ(0)
+                }
+                Token::EOF => Instruction::Exit,
+            };
+            instructions.push(instr)
         }
-        Ok(Program { tokens })
+
+        while let Some((token, _address)) = jmp_addresses.pop() {
+            errors.report_error(token);
+        }
+
+        if errors.had_error() {
+            Err(errors)
+        } else {
+            Ok(Program { instructions })
+        }
+    }
+
+    pub fn from_str(program: &str) -> Result<Program, ParseError> {
+        Program::parse(Program::tokenize(&program))
     }
 }
 
-/// count the number of Tokens (< > + - . , [) up to the matching close bracket
-fn count_tokens_cbrack(program: &str, index: usize, lines: usize) -> Result<usize, ParseError> {
-    let mut stack = 0;
-    let mut counter = 0usize;
-    for instr in program.chars() {
-        match instr {
-            '<' | '>' | '+' | '-' | '.' | ',' => counter += 1,
-            '[' => {
-                stack += 1;
-                counter += 1;
-            },
-            // ] don't count as tokens by themselves so the counter doesn't get increased
-            ']' => {
-                stack -= 1;
-                if stack == 0 {
-                    return Ok(counter - 1);
-                }
-            },
-            _ => continue,
+pub enum RuntimeError {
+    CellOverflow(String),
+    CellUnderflow(String),
+}
+
+impl Display for RuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuntimeError::CellOverflow(str) => write!(f, "CellOverflow Error: {}", str),
+            RuntimeError::CellUnderflow(str) => write!(f, "CellUnderflow Error: {}", str),
         }
     }
-    Err(ParseError::NoCloseBracket(index, lines))
 }
 
 /// Machine struct, to emulate a kind of Turingmachine, that can be operated via Brainfuck code
@@ -169,65 +217,80 @@ impl Machine {
         Machine { cells, ptr }
     }
 
-    /// Run a Program on the Machine
-    pub fn run(&mut self, program: &Program) {
-        self.run_slice(program);
-    }
+    pub fn run(&mut self, program: &Program) -> Result<(), RuntimeError> {
+        let mut instr_ptr = 0usize;
+        let mut instr = program.get(0).expect("should always be inside vec");
 
-    /// recursive helper for run, to handle nested loops
-    fn run_slice(&mut self, program: &[Token]) {
-        let mut it = program.iter().enumerate();
-        while let Some((index, token)) = it.next() {
-            match token {
-                Token::MvLeft => self.mv_right(),
-                Token::MvRight => self.mv_left(),
-                Token::Inc => self.inc(),
-                Token::Dec => self.dec(),
-                Token::GetChar => self.get(),
-                Token::PutChar => self.put(),
-                Token::Loop(idx) => {
-                    let end = index + 1 + *idx;
-                    while *self.value() != 0 {
-                        self.run_slice(&program[index+1..end]);
-                    }
-                    it.nth(*idx - 1);
+        while *instr != Instruction::Exit {
+            match instr {
+                Instruction::MvLeft(times) => self.mv_left(*times)?,
+                Instruction::MvRight(times) => self.mv_right(*times)?,
+                Instruction::Inc(times) => self.inc(*times),
+                Instruction::Dec(times) => self.dec(*times),
+                Instruction::Get => self.get(),
+                Instruction::Put => self.put(),
+                Instruction::Jmp(addr) => {
+                    instr_ptr = *addr;
+                    instr = program.get(instr_ptr).expect("jump failed");
+                    continue;
                 },
+                Instruction::JmpZ(addr) => {
+                    if self.value() == 0 {
+                        instr_ptr = *addr;
+                        instr = program.get(instr_ptr).expect("jump failed");
+                        continue;
+                    }
+                },
+                Instruction::Exit => continue,
             }
+            instr_ptr += 1;
+            instr = program.get(instr_ptr).expect("should be inside vec");
         }
+
+        Ok(())
     }
 
-    fn value(&self) -> &u8 {
-        &self.cells[self.ptr]
+    fn value(&self) -> u8 {
+        *&self.cells[self.ptr]
     }
 
-    fn mv_left(&mut self) {
-        // pointer can't move further than the cell size, so exit program
-        if self.ptr > self.cells.len() - 1 {
-            eprintln!("Runtime Error: Pointer can't move beyond {}. Try running again with a bigger cell size", self.cells.len());
-            process::exit(1);
+    fn mv_right(&mut self, times: usize) -> Result<(), RuntimeError> {
+        // pointer can't move further than the cell size, so throw a runtime error
+        if self.ptr + times >= self.cells.len() {
+            return Err(
+                RuntimeError::CellOverflow(
+                    format!("Pointer can't move beyond {}. Try running again with a bigger cell size", self.cells.len())
+                    )
+                );
         }
-        self.ptr += 1;
+        self.ptr += times;
+        Ok(())
     }
 
-    fn mv_right(&mut self) {
+    fn mv_left(&mut self, times: usize) -> Result<(), RuntimeError> {
         // pointer can't move below 0, so exit program
-        if self.ptr < 1 {
-            eprintln!("Runtime Error: Pointer can't move below 0");
-            process::exit(1);
+        if self.ptr.saturating_sub(times - 1) == 0 {
+            return Err(
+                RuntimeError::CellOverflow(
+                    String::from("Pointer can't move below 0")
+                    )
+                );
         }
-        self.ptr -= 1;
+        self.ptr -= times;
+        // println!("{}", self.ptr);
+        Ok(())
     }
 
-    fn inc(&mut self) {
-        self.cells[self.ptr] = self.cells[self.ptr].wrapping_add(1);
+    fn inc(&mut self, times: usize) {
+        self.cells[self.ptr] = self.cells[self.ptr].wrapping_add((times % u8::max_value() as usize) as u8);
     }
 
-    fn dec(&mut self) {
-        self.cells[self.ptr] = self.cells[self.ptr].wrapping_sub(1);
+    fn dec(&mut self, times: usize) {
+        self.cells[self.ptr] = self.cells[self.ptr].wrapping_sub((times % u8::max_value() as usize) as u8);
     }
 
     fn put(&self) {
-        let ch = char::from(*self.value());
+        let ch = char::from(self.value());
         print!("{ch}");
     }
 
@@ -262,8 +325,7 @@ mod test {
     use super::*;
 
     fn setup_machine(cell_sz: usize) -> Machine {
-        let cnfg = Config { program: "".to_owned(), cell_sz, inp_type: false, state: true };
+        let cnfg = Config { program: "".to_owned(), cell_sz, inp_type: false };
         Machine::new(&cnfg)
     }
-
 }

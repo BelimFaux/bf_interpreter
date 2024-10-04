@@ -13,18 +13,17 @@ fn main() {
         }
     };
 
-    let program = match Program::tokenize(program_str) {
-        Ok(prg) => prg,
+    let program = match Program::from_str(&program_str) {
+        Ok(program) => program,
         Err(err) => {
-            eprintln!("Error parsing Code:\n{}", err.get_msg(program_str));
+            eprintln!("{}", err.get_error_msg(&program_str));
             process::exit(1);
-        },
+        }
     };
 
     let mut machine = Machine::new(&cnfg);
-    machine.run(&program);
-
-    if cnfg.state {
-        println!("\nFinal State: {}", machine);
+    if let Err(err) = machine.run(&program) {
+        eprintln!("{}", err);
+        process::exit(1);
     }
 }
