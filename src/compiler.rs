@@ -2,8 +2,8 @@ use core::ops::Deref;
 
 #[derive(Debug)]
 enum Token {
-    RBrac { line: u32, col: u32 },  // Brackets store position information, because they are the only Tokens, that can produce ParseErrors
-    LBrac { line: u32, col: u32 },
+    RBrac { line: usize, col: usize },  // Brackets store position information, because they are the only Tokens, that can produce ParseErrors
+    LBrac { line: usize, col: usize },
     Plus,
     Minus,
     Less,
@@ -43,13 +43,31 @@ impl ParseError {
         self.errors.len() != 0
     }
 
-    pub fn get_error_msg(&self, _program: &str) -> String {
-        let mut msg = format!("{} errors occured during parsing:\n", self.errors.len());
+    fn format_error(line: usize, col: usize, line_str: &str) -> String {
+        let mut error_str = format!("{line} {line_str}");
+        let ln_len = line.to_string().len();
+        let arrow = col + ln_len;
+        error_str.push_str("\n ");
+        error_str.push_str(&" ".repeat(arrow));
+        error_str.push('^');
+        error_str
+    }
 
-        for err in &self.errors {
+    pub fn get_error_msg(mut self, program: &str) -> String {
+        let ending = if self.errors.len() == 1 { '\0' } else { 's' };
+        let mut msg = format!("{} error{} occured during parsing:\n", self.errors.len(), ending);
+
+        self.errors.reverse();
+        for err in self.errors {
             let str = match err {
-                Token::RBrac { line, col } => format!("Unexpected closing bracket found (l.{line}:{col}).\n"),
-                Token::LBrac { line, col } => format!("Opening bracket wasn't closed (l.{line}:{col}).\n"),
+                Token::RBrac { line, col } => {
+                    let line_str = program.lines().nth(line-1).expect("line should always exist");
+                    format!("Unexpected closing bracket found at {line}:{col}: \n {}\n", ParseError::format_error(line, col, line_str))
+                },
+                Token::LBrac { line, col } => {
+                   let line_str = program.lines().nth(line-1).expect("line should always exist");
+                   format!("Opening bracket at {line}:{col} wasn't closed: \n {}\n", ParseError::format_error(line, col, line_str))
+                },
                 _ => format!("Unexpected Error at {:?}\n", err),
             };
             msg.push_str(&str);

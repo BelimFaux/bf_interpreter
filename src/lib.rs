@@ -33,13 +33,3 @@ impl Config {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    fn setup_machine(cell_sz: usize) -> Machine {
-        let cnfg = Config { program: "".to_owned(), cell_sz, inp_type: false };
-        Machine::new(&cnfg)
-    }
-}
