@@ -13,7 +13,7 @@ fn main() {
         }
     };
 
-    let program = match Program::from_str(&program_str) {
+    let program = match compiler::Program::from_str(&program_str) {
         Ok(program) => program,
         Err(err) => {
             eprintln!("{}", err.get_error_msg(&program_str));
@@ -21,7 +21,7 @@ fn main() {
         }
     };
 
-    let mut machine = Machine::new(&cnfg);
+    let mut machine = vm::Machine::new(&cnfg);
     if let Err(err) = machine.run(&program) {
         eprintln!("{}", err);
         process::exit(1);
