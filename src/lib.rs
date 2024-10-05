@@ -17,6 +17,10 @@ pub struct Config {
     /// Type of input. If set, instead of a file the programcode is expected
     #[arg(short = 'i', long = "input", action)]
     inp_type: bool,
+
+    /// If program should be optimized
+    #[arg(short = 'o', long = "optimize", action)]
+    pub optimize: bool,
 }
 
 impl Config {

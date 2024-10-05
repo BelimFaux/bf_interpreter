@@ -1,4 +1,5 @@
 use core::ops::Deref;
+use std::collections::hash_map::HashMap;
 
 #[derive(Debug)]
 enum Token {
@@ -13,7 +14,7 @@ enum Token {
     EOF,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
     MvLeft(usize),
     MvRight(usize),
@@ -24,6 +25,19 @@ pub enum Instruction {
     Get,
     Put,
     Exit,
+}
+
+impl Instruction {
+    fn increment(&mut self) -> bool {
+        match self {
+            Instruction::MvLeft(amount) => *amount += 1,
+            Instruction::MvRight(amount) => *amount += 1,
+            Instruction::Inc(amount) => *amount += 1,
+            Instruction::Dec(amount) => *amount += 1,
+            _ => return false,
+        }
+        true
+    }
 }
 
 pub struct ParseError {
@@ -138,7 +152,7 @@ impl Program {
                 Token::Comma => Instruction::Get,
                 Token::RBrac { .. } => {
                     if let Some((token, address)) = jmp_addresses.pop() {
-                        let jmp_addr = instructions.len() + 1;  // jump past this instr
+                        let jmp_addr = instructions.len();
                         match instructions.get_mut(address).expect("jmp address should always exist") {
                             Instruction::JmpZ(addr) => *addr = jmp_addr,
                             _ => errors.report_error(token),
@@ -169,7 +183,51 @@ impl Program {
         }
     }
 
-    pub fn from_str(program: &str) -> Result<Program, ParseError> {
-        Program::parse(Program::tokenize(&program))
+    pub fn from_str(program: &str, optimize: bool) -> Result<Program, ParseError> {
+        let mut program = Program::parse(Program::tokenize(&program))?;
+        if optimize {
+            program.optimize();
+        }
+        Ok(program)
+    }
+
+    fn optimize(&mut self) {
+        if self.instructions.is_empty() { return; }
+
+        let mut optimized_instructions = Vec::with_capacity(self.instructions.len());
+        let instr = self.instructions.first().expect("").clone();
+        let mut removed = 0usize;
+        let mut new_jmp_addrs = HashMap::new();
+        optimized_instructions.push(instr);
+
+        for (i, instr) in self.instructions.iter().skip(1).enumerate() {
+            let last_added = optimized_instructions.last_mut().expect("vec shouldnt be empty");
+
+            // increment count, if type is the same
+            if std::mem::discriminant(instr) == std::mem::discriminant(last_added) {
+                if last_added.increment() { removed += 1; continue; }
+            }
+            // save new jmp addresses if necessary
+            match instr {
+                Instruction::Jmp(_) | Instruction::JmpZ(_) => {
+                    new_jmp_addrs.insert(i + 1, removed);
+                },
+                _ => {},
+            };
+            optimized_instructions.push(instr.clone());
+        }
+
+        // patch jmp addresses
+        for instr in &mut optimized_instructions {
+            match instr {
+                Instruction::Jmp(addr) | Instruction::JmpZ(addr) => {
+                    *addr -= new_jmp_addrs.get(addr).expect("addr shoulb be in vec");
+                },
+                _ => {},
+            }
+        }
+
+        optimized_instructions.shrink_to_fit();
+        self.instructions = optimized_instructions;
     }
 }

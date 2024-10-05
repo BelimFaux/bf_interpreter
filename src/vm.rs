@@ -51,7 +51,7 @@ impl Machine {
                 },
                 Instruction::JmpZ(addr) => {
                     if self.value() == 0 {
-                        instr_ptr = *addr;
+                        instr_ptr = *addr + 1;
                         instr = program.get(instr_ptr).expect("jump failed");
                         continue;
                     }
