@@ -10,7 +10,7 @@ The Program can be compiled with cargo:
 ```bash
 git clone https://github.com/BelimFaux/bf_interpreter.git
 cd bf_interpreter
-cargo run --release examples/hello_world.bf
+cargo run --release -- examples/hello_world.bf
 ```
 It takes atleast one parameter for the Input-file or optionally the bf-code.
 It's also possible to set the size of the cell band, which is by default set to 10.
