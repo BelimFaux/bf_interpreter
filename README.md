@@ -13,7 +13,7 @@ cd bf_interpreter
 cargo run --release -- examples/hello_world.bf
 ```
 It takes atleast one parameter for the Input-file or optionally the bf-code.
-It's also possible to set the size of the cell band, which is by default set to 10.
+It's also possible to set the size of the cell band, which is by default set to 30000.
 
 For all options run `./target/release/bf-interpreter -h`.
 

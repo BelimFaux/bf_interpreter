@@ -22,8 +22,6 @@ fn main() {
         }
     };
 
-    println!("{:?}", program);
-
     let mut machine = vm::Machine::new(&cnfg);
     if let Err(err) = machine.run(&program) {
         eprintln!("{}", err);

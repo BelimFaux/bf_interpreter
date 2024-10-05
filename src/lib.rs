@@ -11,7 +11,7 @@ pub struct Config {
     program: String,
 
     /// Amount of cells available
-    #[arg(default_value_t = 100, short = 'c', long = "cells")]
+    #[arg(default_value_t = 30000, short = 'c', long = "cells")]
     pub cell_sz: usize,
 
     /// Type of input. If set, instead of a file the programcode is expected
