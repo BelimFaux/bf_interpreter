@@ -79,8 +79,8 @@ impl ParseError {
                     format!("Unexpected closing bracket found at {line}:{col}: \n {}\n", ParseError::format_error(line, col, line_str))
                 },
                 Token::LBrac { line, col } => {
-                   let line_str = program.lines().nth(line-1).expect("line should always exist");
-                   format!("Opening bracket at {line}:{col} wasn't closed: \n {}\n", ParseError::format_error(line, col, line_str))
+                    let line_str = program.lines().nth(line-1).expect("line should always exist");
+                    format!("Opening bracket at {line}:{col} wasn't closed: \n {}\n", ParseError::format_error(line, col, line_str))
                 },
                 _ => format!("Unexpected Error at {:?}\n", err),
             };
