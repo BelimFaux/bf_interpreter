@@ -11,7 +11,7 @@ enum Token {
     Greater,
     Dot,
     Comma,
-    EOF,
+    Eof,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -54,7 +54,7 @@ impl ParseError {
     }
 
     fn had_error(&self) -> bool {
-        self.errors.len() != 0
+        !self.errors.is_empty()
     }
 
     fn format_error(line: usize, col: usize, line_str: &str) -> String {
@@ -133,7 +133,7 @@ impl Program {
             tokens.push(token);
         }
 
-        tokens.push(Token::EOF);
+        tokens.push(Token::Eof);
         tokens
     }
 
@@ -167,7 +167,7 @@ impl Program {
                     jmp_addresses.push((token, instructions.len()));
                     Instruction::JmpZ(0)
                 }
-                Token::EOF => Instruction::Exit,
+                Token::Eof => Instruction::Exit,
             };
             instructions.push(instr)
         }
@@ -184,7 +184,7 @@ impl Program {
     }
 
     pub fn from_str(program: &str, optimize: bool) -> Result<Program, ParseError> {
-        let mut program = Program::parse(Program::tokenize(&program))?;
+        let mut program = Program::parse(Program::tokenize(program))?;
         if optimize {
             program.optimize();
         }
@@ -204,8 +204,8 @@ impl Program {
             let last_added = optimized_instructions.last_mut().expect("vec shouldnt be empty");
 
             // increment count, if type is the same
-            if std::mem::discriminant(instr) == std::mem::discriminant(last_added) {
-                if last_added.increment() { removed += 1; continue; }
+            if std::mem::discriminant(instr) == std::mem::discriminant(last_added) && last_added.increment() {
+                removed += 1; continue; 
             }
             // save new jmp addresses if necessary
             match instr {
