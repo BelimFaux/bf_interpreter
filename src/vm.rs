@@ -34,7 +34,7 @@ impl Machine {
 
     pub fn run(&mut self, program: &Program) -> Result<(), RuntimeError> {
         let mut instr_ptr = 0usize;
-        let mut instr = program.get(0).expect("should always be inside vec");
+        let mut instr = program.first().expect("should always be inside vec");
 
         while *instr != Instruction::Exit {
             match instr {
@@ -66,7 +66,7 @@ impl Machine {
     }
 
     fn value(&self) -> u8 {
-        *&self.cells[self.ptr]
+        self.cells[self.ptr]
     }
 
     fn mv_right(&mut self, times: usize) -> Result<(), RuntimeError> {
@@ -97,11 +97,11 @@ impl Machine {
     }
 
     fn inc(&mut self, times: usize) {
-        self.cells[self.ptr] = self.cells[self.ptr].wrapping_add((times % u8::max_value() as usize) as u8);
+        self.cells[self.ptr] = self.cells[self.ptr].wrapping_add((times % u8::MAX as usize) as u8);
     }
 
     fn dec(&mut self, times: usize) {
-        self.cells[self.ptr] = self.cells[self.ptr].wrapping_sub((times % u8::max_value() as usize) as u8);
+        self.cells[self.ptr] = self.cells[self.ptr].wrapping_sub((times % u8::MAX as usize) as u8);
     }
 
     fn put(&self) {
@@ -114,7 +114,6 @@ impl Machine {
             .bytes()
             .next()
             .and_then(|result| result.ok())
-            .map(|byte| byte)
             .unwrap_or(0);
 
         self.cells[self.ptr] = input;

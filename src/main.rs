@@ -14,10 +14,10 @@ fn main() {
         }
     };
 
-    let program = match compiler::Program::from_str(&program_str, optimize) {
+    let program = match compiler::Program::from_str(program_str, optimize) {
         Ok(program) => program,
         Err(err) => {
-            eprintln!("{}", err.get_error_msg(&program_str));
+            eprintln!("{}", err.get_error_msg(program_str));
             process::exit(1);
         }
     };
